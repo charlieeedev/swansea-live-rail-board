@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swansea Station — Live Rail Board</title>
+<style>
+:root{
+  --bg:#050505;
+  --panel:#101010;
+  --panel2:#171717;
+  --yellow:#ffd400;
+  --white:#f5f5f5;
+  --muted:#a6a6a6;
+  --green:#72e06a;
+  --red:#ff5a5a;
+  --amber:#ffc400;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--white);font-family:Arial,Helvetica,sans-serif}
+body{min-height:100vh}
+.header{
+  background:#0d0d0d;border-bottom:1px solid #303030;
+  padding:22px 34px 18px;display:flex;justify-content:space-between;align-items:flex-end;
+}
+.brand{display:flex;align-items:center;gap:15px}
+.dot{width:18px;height:18px;background:var(--yellow);border-radius:50%;box-shadow:0 0 13px rgba(255,212,0,.35)}
+.station{font-size:30px;font-weight:800;letter-spacing:.2px}
+.code{font-size:14px;color:var(--muted);font-weight:700;letter-spacing:2px;margin-top:3px}
+.clock{text-align:right;font-variant-numeric:tabular-nums}
+.time{font-size:30px;font-weight:800}
+.date{font-size:13px;color:var(--muted);margin-top:3px}
+.wrap{max-width:1500px;margin:0 auto;padding:24px 28px 35px}
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tab{
+  border:1px solid #363636;background:#151515;color:#bbb;
+  padding:12px 24px;border-radius:5px;font-weight:800;cursor:pointer;
+}
+.tab.active{background:var(--yellow);border-color:var(--yellow);color:#000}
+.board{
+  border:1px solid #333;background:var(--panel);
+  box-shadow:0 8px 30px rgba(0,0,0,.35);overflow:hidden;border-radius:4px;
+}
+.board-head,.row{
+  display:grid;
+  grid-template-columns:150px minmax(280px,1.7fr) 130px 210px 190px;
+  align-items:center;
+}
+.board-head{
+  background:#1b1b1b;color:#bbb;font-size:12px;font-weight:800;
+  text-transform:uppercase;letter-spacing:1.3px;padding:13px 20px;
+}
+.row{
+  min-height:78px;padding:12px 20px;border-top:1px solid #292929;
+  font-variant-numeric:tabular-nums;
+}
+.row:hover{background:#151515}
+.train-time{font-size:26px;font-weight:800}
+.destination{font-size:20px;font-weight:700}
+.via{font-size:12px;color:var(--muted);margin-top:5px}
+.platform{font-size:20px;font-weight:800}
+.operator{font-size:14px;font-weight:700}
+.status{font-weight:800;font-size:15px}
+.status.on{color:var(--green)}
+.status.due{color:var(--yellow)}
+.status.late{color:var(--red)}
+.status.estimated{color:var(--amber)}
+.status.cancelled{color:var(--red)}
+.message{padding:45px 20px;text-align:center;color:var(--muted)}
+.footer{
+  display:flex;justify-content:space-between;gap:15px;margin-top:15px;
+  color:#777;font-size:12px;flex-wrap:wrap
+}
+.live{display:flex;align-items:center;gap:7px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+@media(max-width:850px){
+ .header{padding:18px;align-items:flex-start}.station{font-size:23px}.time{font-size:23px}
+ .wrap{padding:15px 10px}
+ .board-head{display:none}
+ .row{grid-template-columns:85px 1fr 80px;gap:8px;padding:14px 12px}
+ .operator{display:none}.status{grid-column:2/4;font-size:13px;margin-top:3px}
+ .platform{font-size:17px}
+ .destination{font-size:17px}
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <div class="station">Swansea</div>
+      <div class="code">SWANSEA STATION · SWA</div>
+    </div>
+  </div>
+  <div class="clock">
+    <div class="time" id="clock">--:--:--</div>
+    <div class="date" id="date">Loading…</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tabs">
+    <button class="tab active" data-type="departures">Departures</button>
+    <button class="tab" data-type="arrivals">Arrivals</button>
+  </div>
+
+  <section class="board">
+    <div class="board-head">
+      <div>Time</div><div>Destination</div><div>Platform</div><div>Operator</div><div>Status</div>
+    </div>
+    <div id="rows" class="message">Connecting to the live rail feed…</div>
+  </section>
+
+  <div class="footer">
+    <div class="live"><span class="live-dot"></span><span id="connection">LIVE DATA</span></div>
+    <div>Data source: National Rail Darwin · Station: Swansea (SWA)</div>
+    <div>Updated <span id="updated">—</span></div>
+  </div>
+</main>
+
+<script>
+let currentType = "departures";
+const rows = document.getElementById("rows");
+const connection = document.getElementById("connection");
+const updated = document.getElementById("updated");
+
+document.querySelectorAll(".tab").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    currentType = btn.dataset.type;
+    loadBoard();
+  });
+});
+
+function clock(){
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString("en-GB",{hour12:false});
+  document.getElementById("date").textContent =
+    now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+}
+setInterval(clock,1000); clock();
+
+function esc(value){
+  return String(value ?? "").replace(/[&<>"']/g,m=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
+}
+
+function normalise(item){
+  return {
+    time: item.time || item.scheduled || item.scheduledTime || "—",
+    destination: item.destination || item.origin || "—",
+    via: item.via || item.calls || "",
+    platform: item.platform || "—",
+    operator: item.operator || item.toc || "—",
+    status: item.status || "On time",
+    statusClass: (item.statusClass || String(item.status||"on").toLowerCase().replace(/\s+/g,"-"))
+  };
+}
+
+function render(data){
+  const services = Array.isArray(data) ? data : (data.services || data.trains || []);
+  if(!services.length){
+    rows.innerHTML = '<div class="message">No services returned for this board.</div>';
+    return;
+  }
+  rows.className = "";
+  rows.innerHTML = services.map(raw=>{
+    const s=normalise(raw);
+    return `
+      <div class="row">
+        <div class="train-time">${esc(s.time)}</div>
+        <div>
+          <div class="destination">${esc(s.destination)}</div>
+          ${s.via ? `<div class="via">${esc(s.via)}</div>` : ""}
+        </div>
+        <div class="platform">${esc(s.platform)}</div>
+        <div class="operator">${esc(s.operator)}</div>
+        <div class="status ${esc(s.statusClass)}">${esc(s.status)}</div>
+      </div>`;
+  }).join("");
+}
+
+async function loadBoard(){
+  connection.textContent = "CONNECTING…";
+  try{
+    // Your server should expose:
+    // GET /api/board?type=departures
+    // GET /api/board?type=arrivals
+    const res = await fetch(`/api/board?type=${currentType}`, {cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const data = await res.json();
+    render(data);
+    connection.textContent = "LIVE DATA";
+    updated.textContent = new Date().toLocaleTimeString("en-GB",{hour12:false});
+  }catch(err){
+    connection.textContent = "DEMO / API NOT CONNECTED";
+    render([
+      {time:"12:18",destination:"Cardiff Central",platform:"1",operator:"Transport for Wales",status:"On time",statusClass:"on"},
+      {time:"12:32",destination:"London Paddington",platform:"2",operator:"Great Western Railway",status:"Due",statusClass:"due"},
+      {time:"12:47",destination:"Manchester Piccadilly",platform:"3",operator:"Transport for Wales",status:"On time",statusClass:"on"},
+      {time:"13:05",destination:"Carmarthen",platform:"4",operator:"Transport for Wales",status:"Expected",statusClass:"estimated"}
+    ]);
+    updated.textContent = "demo";
+  }
+}
+
+loadBoard();
+setInterval(loadBoard, 30000);
+</script>
+</body>
+</html>
